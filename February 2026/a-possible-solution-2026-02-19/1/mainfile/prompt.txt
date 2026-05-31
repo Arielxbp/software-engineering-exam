@@ -1,0 +1,45 @@
+class BaseSystem
+{
+
+public:
+
+  BaseSystem(Global *p, const char *mysysname);
+
+  virtual void create() {};
+  ....
+  
+};
+
+
+
+class System : public BaseSystem
+{
+
+public:
+  
+  // processes
+
+  void create() override;  /* create system  */
+
+
+};
+
+
+int main()
+{
+System sys(&p, "sys");
+...
+}
+
+ERROR:
+
+main.cpp:11:23: error: no matching function for call to ‘System::System(Global*, const char [4])’
+   11 |   System sys(&p, "sys");
+      |                       ^
+In file included from main.h:10,
+                 from main.cpp:3:
+../system/system.h:10:7: note: candidate: ‘System::System(const System&)’
+   10 | class System : public BaseSystem
+      |       ^~~~~~
+../system/system.h:10:7: note:   candidate expects 1 argument, 2 provided
+../system/system.h:10:7: note: candidate: ‘System::System(System&&)’
