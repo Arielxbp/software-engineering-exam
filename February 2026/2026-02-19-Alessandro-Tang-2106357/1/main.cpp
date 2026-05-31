@@ -95,8 +95,8 @@ int main() {
     double averageCollisionRate = totalCollisionRate / M;
 
     // Output result
-    std::ofstream outFile("output.txt");
-    outFile << "2026-02-19-Alessandro-Tang-2106357" << std::endl;
-    outFile << "C: " << averageCollisionRate << std::endl;
+    std::ofstream outFile("results.txt");
+    outFile << "2026-05-31-Alessandro-Tang-2106357" << std::endl;
+    outFile << "C " << averageCollisionRate << std::endl;
     return 0;
 }
