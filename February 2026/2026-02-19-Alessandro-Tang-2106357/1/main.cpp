@@ -33,7 +33,7 @@ double run_one_simulation(double T, double H, double L, double V, double D, int 
         }
     }
 
-    // number of steps
+    // Number of steps
     int numSteps = (int)std::floor(H / T + 1e-9);
 
     // Simulate movement

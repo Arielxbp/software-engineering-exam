@@ -1,10 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
-#include <string>
 #include <cmath>
-#include <algorithm>
-#include <iomanip>
 #include "include/IO.hpp"
 #include "include/Random.hpp"
 #include "include/Geometry.hpp"
@@ -15,126 +12,131 @@ struct UAV {
     Point3D pos;
 };
 
-// d(z, t) = sum_{j != excludeIdx} sum_k ((z_k - x_{k,j}(t)) / (2L))^2
-// Measures total squared normalised distance from candidate position z
-// to all other UAVs' current positions.
-double computeD(const Point3D& z, const std::vector<UAV>& uavs, int excludeIdx, double L) {
-    double val = 0.0;
-    double inv2L = 1.0 / (2.0 * L);
-    for (int j = 0; j < (int)uavs.size(); ++j) {
-        if (j == excludeIdx) continue;
-        double dx = (z.x - uavs[j].pos.x) * inv2L;
-        double dy = (z.y - uavs[j].pos.y) * inv2L;
-        double dz = (z.z - uavs[j].pos.z) * inv2L;
-        val += dx*dx + dy*dy + dz*dz;
+// d(z, t) = sum_{j=1}^{N} sum_{k=1}^{3} ((z_k - x_{k,j}(t)) / (2L))^2
+// Measures how spread-out candidate position z is from all current UAV positions.
+double computeD(const Point3D &z, const std::vector<UAV> &uavs, double L) {
+    double sum = 0.0;
+    for (const auto &uav : uavs) {
+        double dx = (z.x - uav.pos.x) / 2 * L;
+        double dy = (z.y - uav.pos.y) / 2 * L;
+        double dz = (z.z - uav.pos.z) / 2 * L;
+        sum += dx * dx + dy * dy + dz * dz;
     }
-    return val;
+    return sum;
 }
 
+// Returns candidate next position of UAV i given angles theta, phi.
+Point3D nextPos(const Point3D &p, double theta, double phi, double V, double T) {
+    return {
+        p.x + V * std::sin(theta) * std::cos(phi) * T,
+        p.y + V * std::sin(theta) * std::sin(phi) * T,
+        p.z + V * std::cos(theta) * T
+    };
+}
 
-double runOneSim(double T, double H, int N, double L, double V, double D, int Q, RandomGenerator &rng) {
+double run_one_simulation(double T, double H, double L, double V, double D,
+                          int N, int Q, RandomGenerator &rng) {
+
+    // Init UAVs
     std::vector<UAV> uavs(N);
-    for (int i = 0; i < N; ++i)
+    for (int i = 0; i < N; ++i) {
         uavs[i].pos = {rng.uniform(-L, L), rng.uniform(-L, L), rng.uniform(-L, L)};
+    }
 
+    // Check initial collisions
     long long totalCollisions = 0;
-    const double PI = M_PI;
-
-    for (int i = 0; i < N; ++i)
-        for (int j = i + 1; j < N; ++j)
-            if ((j > i) && uavs[i].pos.distanceTo(uavs[j].pos) < D)
+    for (int i = 0; i < N; ++i) {
+        for (int j = i + 1; j < N; ++j) {
+            if (uavs[i].pos.distanceTo(uavs[j].pos) < D) {
                 totalCollisions++;
+            }
+        }
+    }
 
-    // Simulate: check collisions at t = 0, T, 2T, ..., floor(H/T)*T
-    for (int t_idx = 0; (double)t_idx * T <= H + 1e-9; ++t_idx) {
+    // Number of steps
+    int numSteps = (int)(std::floor(H / T + 1e-9));
 
-        // Collision-avoidance policy: choose best (theta, phi) for each UAV
-        // using the current positions of all UAVs, then update simultaneously.
-        std::vector<Point3D> nextPos(N);
+    // Simulate movement
+    for (int t = 0; t < numSteps; ++t) {
+
+        // Move each UAV
         for (int i = 0; i < N; ++i) {
-            double bestD = -1e300;
-            std::vector<std::pair<int,int>> bestPairs;
 
-            // Enumerate all (Q+1)^2 discrete (theta, phi) combinations
-            for (int qi = 0; qi <= Q; ++qi) {
-                double theta = (double)qi / Q * PI;
-                for (int qj = 0; qj <= Q; ++qj) {
-                    double phi = (double)qj / Q * 2.0 * PI;
+            // Grid search over (Q+1)^2 discrete (theta, phi) combinations.
+            // theta_q = q/Q * pi,  phi_q = q/Q * 2*pi,  q = 0, 1, ..., Q
+            double best = -1;
+            
+            std::vector<std::pair<double, double>> bestAngles;
 
-                    // Candidate next position: Xi(theta, phi, t+1)
-                    Point3D next = {
-                        uavs[i].pos.x + V * std::sin(theta) * std::cos(phi) * T,
-                        uavs[i].pos.y + V * std::sin(theta) * std::sin(phi) * T,
-                        uavs[i].pos.z + V * std::cos(theta) * T
-                    };
-                    
-                    // Find the d value for this candidate position
-                    double dVal = computeD(next, uavs, i, L);
+            for (int qt = 0; qt <= Q; ++qt) {
 
-                    if (dVal > bestD + 1e-12) {
-                        bestD = dVal;
-                        bestPairs = {{qi, qj}};
-                    } else if (std::abs(dVal - bestD) <= 1e-12) {
-                        bestPairs.push_back({qi, qj});
+                double theta = (double)qt / Q * M_PI;
+
+                for (int qp = 0; qp <= Q; ++qp) {
+
+                    double phi = (double)qp / Q * 2.0 * M_PI;
+
+                    Point3D candidate = nextPos(uavs[i].pos, theta, phi, V, T);
+                    double dval = computeD(candidate, uavs, L);
+
+                    if (dval > best) {
+                        best = dval;
+                        bestAngles.clear();
+                        bestAngles.push_back({theta, phi});
+                    } else if (dval == best) {
+                        // Ties: collect all maximisers, pick uniformly later.
+                        bestAngles.push_back({theta, phi});
                     }
                 }
             }
 
-            // Randomly select one of the best (theta, phi) pairs and update position
-            int idx = rng.uniformInt(0, (int)bestPairs.size() - 1);
-            int qi = bestPairs[idx].first;
-            int qj = bestPairs[idx].second;
-            double theta = (double)qi / Q * PI;
-            double phi   = (double)qj / Q * 2.0 * PI;
+            // Choose uniformly at random among all maximisers.
+            const int idx = rng.uniformInt(0, static_cast<int>(bestAngles.size()) - 1);
+            const double theta = bestAngles[idx].first;
+            const double phi = bestAngles[idx].second;
 
-            nextPos[i] = {
-                uavs[i].pos.x + V * std::sin(theta) * std::cos(phi) * T,
-                uavs[i].pos.y + V * std::sin(theta) * std::sin(phi) * T,
-                uavs[i].pos.z + V * std::cos(theta) * T
-            };
+            // Move UAV i.
+            uavs[i].pos = nextPos(uavs[i].pos, theta, phi, V, T);
 
-            // Update the position of UAV i
-            uavs[i].pos = nextPos[i];
-
-            // Clamp to the box [-L, L]^3
-            // uavs[i].pos.x = std::clamp(uavs[i].pos.x, -L, L);
-            // uavs[i].pos.y = std::clamp(uavs[i].pos.y, -L, L);
-            // uavs[i].pos.z = std::clamp(uavs[i].pos.z, -L, L);
-
-            // Check for collisions with all other UAVs
-            for (int j = 0; j < N; ++j) {
-                if ((j > i) && nextPos[i].distanceTo(uavs[j].pos) < D)
-                     totalCollisions++;
-            }
-
+            // Count collisions of UAV i with every j > i (sequential update).
+            for (int j = i + 1; j < N; ++j)
+                if (uavs[i].pos.distanceTo(uavs[j].pos) < D)
+                    totalCollisions++;
         }
     }
 
-    return (double)totalCollisions / H;
+    return static_cast<double>(totalCollisions) / H;
 }
 
 } // namespace SELib
 
 int main() {
+
     SELib::RandomGenerator rng(std::random_device{}());
+
     SELib::ParameterParser parser;
-    if (!parser.parseFile("parameters.txt")) return 1;
+    if (!parser.parseFile("parameters.txt")) { 
+        return 1;
+    }
 
-    double T = parser.getDouble("T"); // time step
-    double H = parser.getDouble("H"); // simulation horizon
-    double L = parser.getDouble("L"); // area half-width
-    double V = parser.getDouble("V"); // absolute speed
-    double D = parser.getDouble("D"); // collision distance threshold
-    int M = parser.getInt("M");    // number of Monte Carlo simulations
-    int N = parser.getInt("N");    // number of UAVs
-    int Q = parser.getInt("Q");    // discretisation intervals
+    const double T = parser.getDouble("T");
+    const double H = parser.getDouble("H");
+    const double L = parser.getDouble("L");
+    const double V = parser.getDouble("V");
+    const double D = parser.getDouble("D");
+    const int    N = parser.getInt("N");
+    const int    M = parser.getInt("M");
+    const int    Q = parser.getInt("Q");
 
-    double totalRate = 0.0;
+    double totalCollisionRate = 0.0;
     for (int i = 0; i < M; ++i)
-        totalRate += SELib::runOneSim(T, H, N, L, V, D, Q, rng);
+        totalCollisionRate += SELib::run_one_simulation(T, H, L, V, D, N, Q, rng);
+
+    double averageCollisionRate = totalCollisionRate / M;
 
     std::ofstream outFile("results.txt");
-    outFile << "2026-02-19-Alessandro-Tang-2106357" << std::endl;
-    outFile << "C " << totalRate / M << std::endl;
+    outFile << "2026-05-31-Alessandro-Tang-2106357\n";
+    outFile << "C " << averageCollisionRate << "\n";
+
     return 0;
 }
