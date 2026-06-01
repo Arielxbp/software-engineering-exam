@@ -1,0 +1,87 @@
+
+
+#include "main.h"
+
+
+int main()
+{
+
+  REngine r;
+  Global p(r.RandomEngine);
+  System sys(&p, "sys");
+  Simulator q(&p, &sys);
+  InputReader Ireader(&p);
+  OutputWriter Owriter(&p); 
+  MonteCarlo mc(&p, &q);
+  Optimizer opt(&p);
+  
+  int i;
+  
+  /*  prg  */
+  
+#if (DEBUG > 0)
+  setvbuf(stdout, (char*) NULL, _IONBF, 0);
+  setvbuf(stderr, (char*) NULL, _IONBF, 0);
+#endif
+
+#if (DEBUG > 100)
+  fprintf(stderr, "main(): begin\n");
+#endif
+  
+ // init global
+ // p.init();
+    p.sys = &sys;
+
+  
+#if (DEBUG > 100)
+  fprintf(stderr, "main(): p.init() done\n");
+#endif
+
+  // read parameters
+  Ireader.FirstRead("parameters.txt");
+
+  // define opt budget
+  p.Budget = p.prm.G;
+  
+#if (DEBUG > 100)
+  fprintf(stderr, "main(): parameters read\n");
+#endif
+
+
+  // no log with mc or opt
+  q.log = 0;
+
+  // run simulation
+  //q.run("sim.log");
+
+  // run montecarlo
+  mc.run("sim.log");
+  
+#if (DEBUG > 100)
+  fprintf(stderr, "main(): simulation done\n");
+#endif
+  
+  //opt.init(&q, &mc);
+
+#if (DEBUG > 100)
+  fprintf(stderr, "main(): opt initialized \n");
+#endif
+
+  //opt.minimize(p.Budget);
+  
+#if (DEBUG > 100)
+  fprintf(stderr, "main(): opt done \n");
+#endif
+
+
+  Owriter.write(&sys, "results.txt");
+
+#if (DEBUG > 100)
+  fprintf(stderr, "main(): output printed\n");
+#endif
+
+  return(0);
+  
+  
+}  /*  main()  */
+
