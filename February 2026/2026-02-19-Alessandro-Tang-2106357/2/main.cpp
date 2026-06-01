@@ -17,9 +17,9 @@ struct UAV {
 double computeD(const Point3D &z, const std::vector<UAV> &uavs, double L) {
     double sum = 0.0;
     for (const auto &uav : uavs) {
-        double dx = (z.x - uav.pos.x) / 2 * L;
-        double dy = (z.y - uav.pos.y) / 2 * L;
-        double dz = (z.z - uav.pos.z) / 2 * L;
+        double dx = (z.x - uav.pos.x) / (2 * L);
+        double dy = (z.y - uav.pos.y) / (2 * L);
+        double dz = (z.z - uav.pos.z) / (2 * L);
         sum += dx * dx + dy * dy + dz * dz;
     }
     return sum;
