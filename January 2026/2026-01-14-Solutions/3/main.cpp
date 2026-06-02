@@ -15,17 +15,32 @@ class CustomerProcess : public DiscreteEventProcess {
 public:
     CustomerProcess(int pid, int S, int P, int Q, double A, double B, MessageBus &bus, RandomGenerator &rng)
         : pid_(pid), S_(S), P_(P), Q_(Q), A_(A), B_(B), bus_(bus), rng_(rng) {}
-    void initialize(double startTime) override { nextTime_ = startTime + rng_.uniform(A_, B_); }
-    double nextEventTime() const override { return nextTime_; }
+    
+    
+    void initialize(double startTime) override { 
+        nextTime_ = startTime + rng_.uniform(A_, B_); 
+    }
+
+    double nextEventTime() const override {
+        return nextTime_;
+    }
+
     void handleEvent(double currentTime) override {
         Message m;
-        m.time = currentTime; m.sender = pid_; m.receiver = 100 + rng_.uniformInt(0, S_ - 1);
-        m.item = rng_.uniformInt(1, P_); m.quantity = (double)rng_.uniformInt(1, Q_);
+        m.time = currentTime;
+        m.sender = pid_;
+        m.receiver = 100 + rng_.uniformInt(0, S_ - 1);
+        m.item = rng_.uniformInt(1, P_);
+        m.quantity = (double)rng_.uniformInt(1, Q_);
         bus_.procToNet(pid_).push(m);
         nextTime_ = currentTime + rng_.uniform(A_, B_);
     }
+
 private:
-    int pid_, S_, P_, Q_; double A_, B_, nextTime_; MessageBus &bus_; RandomGenerator &rng_;
+    int pid_, S_, P_, Q_;
+    double A_, B_, nextTime_;
+    MessageBus &bus_;
+    RandomGenerator &rng_;
 };
 
 class SupplierProcess : public DiscreteEventProcess {
@@ -89,13 +104,32 @@ int main() {
 
     SELib::Statistics stats;
     for (int m = 0; m < M; ++m) {
-        SELib::MessageBus bus(200); SELib::DiscreteEventSystem system; long long ms = 0;
-        for(int i=0; i<C; ++i) system.emplaceProcess<SELib::CustomerProcess>(i, S, P, Q, A, B, bus, rng);
-        for(int i=0; i<F_suppliers; ++i) system.emplaceProcess<SELib::SupplierProcess>(C+i, S, P, Q, V, W, bus, rng);
-        for(int i=0; i<S; ++i) system.emplaceProcess<SELib::ServerProcess>(100+i, C, F_suppliers, P, Q, bus, rng, ms);
+
+        // Init message bus
+        SELib::MessageBus bus(200);
+
+        // Init DES system
+        SELib::DiscreteEventSystem system;
+        long long ms = 0;
+
+        // Create processes: C customers, F suppliers, S servers, 1 router
+        for(int i=0; i<C; ++i) {
+            system.emplaceProcess<SELib::CustomerProcess>(i, S, P, Q, A, B, bus, rng);
+        }
+        for(int i=0; i<F_suppliers; ++i) {
+            system.emplaceProcess<SELib::SupplierProcess>(C+i, S, P, Q, V, W, bus, rng);
+        }
+        for(int i=0; i<S; ++i) {
+            system.emplaceProcess<SELib::ServerProcess>(100+i, C, F_suppliers, P, Q, bus, rng, ms);
+        }
         system.emplaceProcess<SELib::NetworkRouter>(bus, rng, 0.01);
+
+        // Init DES simulator 
         SELib::DiscreteEventSimulator sim(system);
+
+        // Run simulation
         sim.run(H);
+
         stats.addSample((double)ms / H);
     }
     std::ofstream outFile("results.txt");
