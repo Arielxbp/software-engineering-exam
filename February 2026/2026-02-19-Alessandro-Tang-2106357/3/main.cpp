@@ -173,8 +173,9 @@ public:
                             r_ + l_ + // Read reply from server that he will send items to customer so DB needs to update inventory
                             r_ + l_; // Delay of the next request being processed by the DB after this one
             }
+        } else {
+            nextTime_ = currentTime + r_ + l_;
         }
-        nextTime_ = currentTime + r_ + l_;
     }
     
 private:
