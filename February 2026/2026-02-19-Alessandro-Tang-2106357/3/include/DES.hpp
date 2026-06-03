@@ -66,8 +66,8 @@ public:
 // ---------------------------------------------------------------------------
 class NetworkRouter : public DiscreteEventProcess {
 public:
-  NetworkRouter(MessageBus &bus, RandomGenerator &rng, double scanPeriod = 0.1, double r = 0.0, double w = 0.0)
-      : bus_(bus), rng_(rng), scanPeriod_(scanPeriod), r_(r), w_(w), time_(0.0),
+  NetworkRouter(MessageBus &bus, RandomGenerator &rng, double scanPeriod = 0.1)
+      : bus_(bus), rng_(rng), scanPeriod_(scanPeriod), time_(0.0),
         nextScanTime_(0.0), scanned_(0) {}
 
   void initialize(double startTime) override {
@@ -115,13 +115,9 @@ public:
       }
 
       bus_.netToProc(m.receiver).push(m);
-
-      // message found: pay r (read) + w (write) on top of base scan period
-      nextScanTime_ = currentTime + scanPeriod_ + r_ + w_;
-      
-    }else {
-      nextScanTime_ = currentTime + scanPeriod_;
     }
+
+    nextScanTime_ = currentTime + scanPeriod_;
   }
 
 private:
@@ -138,7 +134,6 @@ private:
   double nextScanTime_;
   std::vector<int> scanner_;
   int scanned_;
-  double r_, w_;
 };
 
 // ---------------------------------------------------------------------------
@@ -147,8 +142,6 @@ private:
 class DiscreteEventSystem {
 public:
   template <typename Proc, typename... Args>
-  
-  // Crea un processo di tipo Proc con i parametri Args e lo aggiunge al sistema
   Proc &emplaceProcess(Args &&...args) {
     auto ptr = std::make_unique<Proc>(std::forward<Args>(args)...);
     Proc &ref = *ptr;
@@ -179,7 +172,6 @@ public:
   void handleEvent(double currentTime) {
     for (auto &p : processes_) {
       if (p->nextEventTime() <= currentTime) {
-        // Corpo della funzione definito nel main
         p->handleEvent(currentTime);
       }
     }
