@@ -15,17 +15,21 @@ struct UAV {
     Point3D pos;
 };
 
-std::pair<int, int> predict_best_u_w(double theta, double phi, std::vector<UAV> &uavs, int current_index, double V, double T, int N, double a, double b) {
+std::pair<int, int> predict_best_u_w(double theta, double phi, std::vector<UAV> &uavs, int current_index, double V, double T, int N, double a, double b , double r, RandomGenerator &rng) {
     
-    double max_distance = 1e12;
-    int best_u = 0;
-    int best_w = 0;
-    
-    // current uav
-    UAV current_uav = uavs[current_index];
+    std::vector<int> neighbor_indices;
+    for (int j = 0; j < N; ++j) {
+        if (j != current_index && uavs[current_index].pos.distanceTo(uavs[j].pos) <= r) {
+            neighbor_indices.push_back(j);
+        }
+    }
+
+    double best_F = -1e18;
+    std::vector<std::pair<int, int>> best_u_w_pairs;
 
     for (int u = -1; u <= 1; ++u) {
         for (int w = -1; w <= 1; ++w) {
+
             double theta_tplus1 = theta + T * a * u;
             double phi_tplus1 = phi + T * b * w;
             double vx_t = V * std::sin(theta) * std::cos(phi);
@@ -35,9 +39,9 @@ std::pair<int, int> predict_best_u_w(double theta, double phi, std::vector<UAV> 
             double vy_tplus1 = V * std::sin(theta_tplus1) * std::sin(phi_tplus1);
             double vz_tplus1 = V * std::cos(theta_tplus1);
             
-            double x_tplus1 = current_uav.pos.x + vx_t * T;
-            double y_tplus1 = current_uav.pos.y + vy_t * T;
-            double z_tplus1 = current_uav.pos.z + vz_t * T;
+            double x_tplus1 = uavs[current_index].pos.x + vx_t * T;
+            double y_tplus1 = uavs[current_index].pos.y + vy_t * T;
+            double z_tplus1 = uavs[current_index].pos.z + vz_t * T;
 
             double x_tplus2 = x_tplus1 + vx_tplus1 * T;
             double y_tplus2 = y_tplus1 + vy_tplus1 * T;
@@ -45,19 +49,20 @@ std::pair<int, int> predict_best_u_w(double theta, double phi, std::vector<UAV> 
 
             Point3D predicted_pos(x_tplus2, y_tplus2, z_tplus2);
 
-            for (int j = 0; j < N; ++j) {
-                if (j != current_index) {
-                    double distance = predicted_pos.distanceTo(uavs[j].pos);
-                    if (distance > max_distance) {
-                        max_distance = distance;
-                        best_u = u;
-                        best_w = w;
-                    }
-                }
+            double F = 1e18;
+
+            for (int j : neighbor_indices) {
+                F = std::min(F, predicted_pos.distanceTo(uavs[j].pos));
+            }
+            if (F > best_F) {
+                best_F = F;
+                best_u_w_pairs = {{u, w}};
+            } else if (F == best_F) {
+                best_u_w_pairs.emplace_back(u, w);
             }
         }
     }
-    return std::pair<int, int>(best_u, best_w);
+    return best_u_w_pairs[rng.uniformInt(0, (int)best_u_w_pairs.size() - 1)];
 }
 
 double run_one_simulation(double T, double H, double L, double V, double D, int N, double a, double b, double r, RandomGenerator &rng) {
@@ -68,8 +73,15 @@ double run_one_simulation(double T, double H, double L, double V, double D, int 
         uavs[i].pos = {rng.uniform(-L, L), rng.uniform(-L, L), rng.uniform(-L, L)};
     }
 
+    // Check initial collisions
     long long totalCollisions = 0;
-
+    for (int i = 0; i < N; ++i) {
+        for (int j = i + 1; j < N; ++j) {
+            if (uavs[i].pos.distanceTo(uavs[j].pos) < D) {
+                totalCollisions++;
+            }
+        }
+    }
 
     // Number of steps
     int numSteps = (int)std::floor(H / T + 1e-9);
@@ -83,21 +95,27 @@ double run_one_simulation(double T, double H, double L, double V, double D, int 
 
     // Simulate movement
     for (int t = 0; t < numSteps; ++t) {
+
+        std::vector<std::pair<int, int>> uavs_u_w(N);
         
-        // Move each UAV in a random direction
+        // Il drone i sceglie u_i(t) e w_i(t) tali da massimizzare F(t+2, i). Cioè il drone
+        // massimizza la distanza tra i suoi futuri vicini assumendo che non si muovano
+        // Questo vale per tutti i droni in modo sincrono, quindi si calcolano prima tutti
+        // i migliori u_i(t) e w_i(t) e poi si aggiornano le posizioni e le direzioni di tutti i droni
+
+        // Predict u and w values for each UAV
         for (int i = 0; i < N; ++i) {
+            uavs_u_w[i] = predict_best_u_w(thetas[i], phis[i], uavs, i, V, T, N, a, b, r, rng);
+        }
 
-            std::pair<int, int> best_u_w = predict_best_u_w(thetas[i], phis[i], uavs, i, V, T, N, a, b);
-
-            int best_u = best_u_w.first;
-            int best_w = best_u_w.second;
-
+        // Update position for each UAV
+        for (int i = 0; i < N; ++i) {
             uavs[i].pos.x += V * T * std::sin(thetas[i]) * std::cos(phis[i]);
             uavs[i].pos.y += V * T * std::sin(thetas[i]) * std::sin(phis[i]);
             uavs[i].pos.z += V * T * std::cos(thetas[i]);
 
-            thetas[i] = thetas[i] + T * a * best_u;
-            phis[i] = phis[i] + T * b * best_w;
+            thetas[i] = thetas[i] + T * a * uavs_u_w[i].first;
+            phis[i] = phis[i] + T * b * uavs_u_w[i].second;
 
         }
 
