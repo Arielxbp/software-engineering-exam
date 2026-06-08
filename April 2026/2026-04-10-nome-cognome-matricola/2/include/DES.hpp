@@ -66,13 +66,14 @@ public:
 // ---------------------------------------------------------------------------
 class NetworkRouter : public DiscreteEventProcess {
 public:
-  NetworkRouter(MessageBus &bus, RandomGenerator &rng, double scanPeriod = 0.1)
-      : bus_(bus), rng_(rng), scanPeriod_(scanPeriod), time_(0.0),
+  NetworkRouter(MessageBus &bus, RandomGenerator &rng, double scanPeriod = 0.1, double deliveryDelay = 0.0)
+      : bus_(bus), rng_(rng), scanPeriod_(scanPeriod), deliveryDelay_(deliveryDelay), time_(0.0),
         nextScanTime_(0.0), scanned_(0) {}
 
   void initialize(double startTime) override {
     time_ = startTime;
     nextScanTime_ = startTime + scanPeriod_;
+    inTransit_.clear();
 
     const int n = static_cast<int>(bus_.size());
     if (n <= 0) {
@@ -88,9 +89,20 @@ public:
     scanned_ = 0;
   }
 
-  double nextEventTime() const override { return nextScanTime_; }
+  double nextEventTime() const override {
+    double t = nextScanTime_;
+    for (auto &im : inTransit_) {
+      if (im.deliveryTime < t) {
+        t = im.deliveryTime;
+      }
+    }
+    return t;
+  }
 
   void handleEvent(double currentTime) override {
+
+    deliverReady(currentTime);
+
     if (currentTime < nextScanTime_)
       return;
 
@@ -114,13 +126,35 @@ public:
         throw std::runtime_error("NetworkRouter: invalid receiver index");
       }
 
-      bus_.netToProc(m.receiver).push(m);
+      if (deliveryDelay_ <= 0.0) {
+        bus_.netToProc(m.receiver).push(m);
+      } else {
+        inTransit_.push_back({m, currentTime + deliveryDelay_});
+      }
     }
 
     nextScanTime_ = currentTime + scanPeriod_;
   }
 
 private:
+
+  struct InTransitMessage {
+    Message msg;
+    double deliveryTime; // currentTime al prelievo + deliveryDelay_
+  };
+
+  void deliverReady(double currentTime) {
+    auto it = inTransit_.begin();
+    while (it != inTransit_.end()) {
+      if (it->deliveryTime <= currentTime) {
+        bus_.netToProc(it->msg.receiver).push(it->msg);
+        it = inTransit_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
   void reshuffleScanner() {
     auto &eng = rng_.engine(); // serve engine() in RandomGenerator
     std::shuffle(scanner_.begin(), scanner_.end(), eng);
@@ -130,10 +164,12 @@ private:
   RandomGenerator &rng_;
 
   double scanPeriod_;
+  double deliveryDelay_;
   double time_;
   double nextScanTime_;
   std::vector<int> scanner_;
   int scanned_;
+  std::vector<InTransitMessage> inTransit_;
 };
 
 // ---------------------------------------------------------------------------

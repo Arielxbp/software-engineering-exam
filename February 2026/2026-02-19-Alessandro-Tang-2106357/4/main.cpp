@@ -86,7 +86,7 @@ public:
         : pid_(pid), C_(C), database_pid_(database_pid), P_(P), Q_(Q), r_(r), w_(w), z_(z), v_(v), bus_(bus), rng_(rng) {}
 
     void initialize(double startTime) override {
-        nextTime_ = startTime + r_ + z_;
+        nextTime_ = startTime + z_;
     }
 
     double nextEventTime() const override {
@@ -113,14 +113,14 @@ public:
                 bus_.procToNet(pid_).push(forward);
             }
             nextTime_ = currentTime + 
-                        w_ + v_ + // Redirect customer request to DB
-                        r_ + z_ + // Process DB availability and inventory check
-                        w_ + v_ + // Send to DB that he will send items to customer so DB needs to update inventory
-                        w_ + v_ + // Send reply to customer that his request is being processed
-                        r_ + z_;  // Delay of the next request being processed by the server after this one
+                        v_ + // Redirect customer request to DB
+                        z_ + // Process DB availability and inventory check
+                        v_ + // Send to DB that he will send items to customer so DB needs to update inventory
+                        v_ + // Send reply to customer that his request is being processed
+                        z_;  // Delay of the next request being processed by the server after this one
 
         } else {
-            nextTime_ = currentTime + r_ + z_;
+            nextTime_ = currentTime + z_;
         }
         
         
@@ -142,7 +142,7 @@ public:
     }
     void initialize(double startTime) override {
         for(int i=1; i<=P_; ++i) inv_[i] = rng_.uniformInt(0, Q_);
-        nextTime_ = startTime +r_ + l_;
+        nextTime_ = startTime + l_;
     }
 
     double nextEventTime() const override {
@@ -157,7 +157,7 @@ public:
             bool isSupply = (m.sender >= C_ && m.sender < C_ + F_);
             if (isSupply) {
                 inv_[m.item] += (int)m.quantity;
-                nextTime_ = currentTime + r_ + l_;
+                nextTime_ = currentTime + l_;
             } else {
                 // This is a customer request forwarded by the server
                 int req = (int)m.quantity;
@@ -166,15 +166,15 @@ public:
                 }
                 int prov = std::min(req, inv_[m.item]);
                 inv_[m.item] -= prov;
-                transactions_++;
+                transactions_ += req;
                 nextTime_ = currentTime +
-                            r_ + l_ + // Read redirected customer request from server
-                            w_ + s_ + // Send to server inventory and availability info
-                            r_ + l_ + // Read reply from server that he will send items to customer so DB needs to update inventory
-                            r_ + l_; // Delay of the next request being processed by the DB after this one
+                            l_ + // Read redirected customer request from server
+                            s_ + // Send to server inventory and availability info
+                            l_ + // Read reply from server that he will send items to customer so DB needs to update inventory
+                            l_; // Delay of the next request being processed by the DB after this one
             }
         } else {
-            nextTime_ = currentTime + r_ + l_;
+            nextTime_ = currentTime + l_;
         }
         
     }
@@ -217,7 +217,7 @@ double runMsims(double H, int M, int C, int S, int F, double A, double B, double
         // which is too much. With 0.0001 it's 0.02s which is acceptable for our simulation scale
         // Warn: if set to very low values like 0.00001, the router might cause a bottleneck and
         // significantly increase simulation time due to excessive scanning frequency.
-        system.emplaceProcess<SELib::NetworkRouter>(bus, rng, 0.0001); 
+        system.emplaceProcess<SELib::NetworkRouter>(bus, rng, 0.0001, r + w); 
 
         // Init DES simulator 
         SELib::DiscreteEventSimulator sim(system);
