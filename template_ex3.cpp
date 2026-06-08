@@ -304,7 +304,7 @@ int main() {
     SELib::Statistics stats;
     for (int m = 0; m < M; ++m) {
 
-        SELib::MessageBus bus(199);
+        SELib::MessageBus bus(200);
         SELib::DiscreteEventSystem system;
 
         double missedSales = 0.0;
