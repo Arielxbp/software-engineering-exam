@@ -222,25 +222,31 @@ public:
 
         pendingReady(currentTime);
 
-        // (If db read delay = true): currentTime + 0.1 - dbReadDelay_
-        // (If db read delay = false): currentTime + 0.1 for periodic polling
         if (currentTime >= nextReadTime_) {
             auto &inbox = bus_.netToProc(pid_);
-            // (If db read delay = true): if (!inbox.empty()) {...}
-            // (If db read delay = false): while (!inbox.empty()) {...}
             while (!inbox.empty()) {
                 Message m = inbox.front(); inbox.pop();
                 bool isSupply = (m.sender >= C_ && m.sender < C_ + F_);
                 if (isSupply) {
                     inv_[m.item].first += (int)m.quantity;
-                    // (If db read delay = true and has successfully read a message): nextReadTime_ = currentTime
-                    // (If db read delay = false): nextReadTime_ = currentTime + 0.1 for periodic polling
-                    nextReadTime_ = currentTime;
-                    
+                    if (dbReadDelay_ > 0.0) {
+                        nextReadTime_ = currentTime + dbReadDelay_;
+                    } else {
+                        nextReadTime_ = currentTime + 0.1;
+                    }
                 } else {
-                    // Server message
+                    // Server messages
                 }
             }
+            /** Alternative to while-loop if there is a db read delay:
+            if (!inbox.empty()) {
+                Message m = inbox.front(); inbox.pop();
+                ...
+                nextReadTime_ = currentTime + dbReadDelay_;
+            } else { 
+                nextReadTime_ = currentTime + 0.1;
+            }
+            */
         }
     }
     
