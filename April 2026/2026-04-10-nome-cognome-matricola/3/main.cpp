@@ -11,6 +11,13 @@
 
 namespace SELib {
 
+static int pickEven(int N, RandomGenerator &rng) {
+    return 2 * rng.uniformInt(1, N / 2);
+}
+static int pickOdd(int N, RandomGenerator &rng) {
+    return 2 * rng.uniformInt(0, (N + 1) / 2 - 1) + 1; // if N=10 -> 2*(0..4)+1 = {1,3,5,7,9}
+}
+
 class CustomerProcess : public DiscreteEventProcess {
 public:
     CustomerProcess(int pid, int S, int P, int Q, double A, double B, double S0, double P0, double Q0, MessageBus &bus, RandomGenerator &rng)
@@ -25,12 +32,10 @@ public:
     }
 
     void handleEvent(double currentTime) override {
-        // 1-based indexing for s, i, q.  s in [1,S], i in [1,P], q in [1,Q]
-        // 2 * (0..N/2-1) = {2,4,...,N}
-        // 2 * (0..(N+1)/2-1) + 1 = {1,3,...,N}
-        int server = rng_.bernoulli(S0_) ? 2 * rng_.uniformInt(1, S_ / 2) : 2 * rng_.uniformInt(0, (S_ + 1) / 2 - 1) + 1;
-        int item = rng_.bernoulli(P0_) ? 2 * rng_.uniformInt(1, P_ / 2) : 2 * rng_.uniformInt(0, (P_ + 1) / 2 - 1) + 1;
-        int quantity = rng_.bernoulli(Q0_) ? 2 * rng_.uniformInt(1, Q_ / 2) : 2 * rng_.uniformInt(0, (Q_ + 1) / 2 - 1) + 1;
+
+        int server = rng_.bernoulli(S0_) ? pickEven(S_, rng_) : pickOdd(S_, rng_);
+        int item = rng_.bernoulli(P0_) ? pickEven(P_, rng_) : pickOdd(P_, rng_);
+        int quantity = rng_.bernoulli(Q0_) ? pickEven(Q_, rng_) : pickOdd(Q_, rng_);
         
         Message m;
         m.time = currentTime;
