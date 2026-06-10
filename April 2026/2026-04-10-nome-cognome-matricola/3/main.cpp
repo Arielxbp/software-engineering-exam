@@ -11,17 +11,20 @@
 
 namespace SELib {
 
+// Can return even numbers in [2,N]
 static int pickEven(int N, RandomGenerator &rng) {
-    return 2 * rng.uniformInt(1, N / 2);
+    return 2 * rng.uniformInt(1, N / 2); // e.g. N=10 -> 2*(1..5) = {2,4,6,8,10}
 }
+
+// Can return odd numbers in [1,N]
 static int pickOdd(int N, RandomGenerator &rng) {
-    return 2 * rng.uniformInt(0, (N + 1) / 2 - 1) + 1; // if N=10 -> 2*(0..4)+1 = {1,3,5,7,9}
+    return 2 * rng.uniformInt(0, (N + 1) / 2 - 1) + 1; // e.g. N=10 -> 2*(0..4)+1 = {1,3,5,7,9}
 }
 
 class CustomerProcess : public DiscreteEventProcess {
 public:
-    CustomerProcess(int pid, int S, int P, int Q, double A, double B, double S0, double P0, double Q0, MessageBus &bus, RandomGenerator &rng)
-        : pid_(pid), S_(S), P_(P), Q_(Q), A_(A), B_(B), S0_(S0), P0_(P0), Q0_(Q0), bus_(bus), rng_(rng) {}
+    CustomerProcess(int pid, int S, int P, int Q, double A, double B, MessageBus &bus, RandomGenerator &rng, double S0, double P0, double Q0)
+        : pid_(pid), S_(S), P_(P), Q_(Q), A_(A), B_(B), bus_(bus), rng_(rng), S0_(S0), P0_(P0), Q0_(Q0) {}
     
     void initialize(double startTime) override {
         nextTime_ = startTime + rng_.uniform(A_, B_);
@@ -32,32 +35,28 @@ public:
     }
 
     void handleEvent(double currentTime) override {
-
-        int server = rng_.bernoulli(S0_) ? pickEven(S_, rng_) : pickOdd(S_, rng_);
-        int item = rng_.bernoulli(P0_) ? pickEven(P_, rng_) : pickOdd(P_, rng_);
-        int quantity = rng_.bernoulli(Q0_) ? pickEven(Q_, rng_) : pickOdd(Q_, rng_);
-        
         Message m;
         m.time = currentTime;
         m.sender = pid_;
-        m.receiver = 100 + (server - 1); // Server PIDs are [100, 100+S-1]
-        m.item = item;
-        m.quantity = quantity;
+        m.receiver = 100 + (rng_.bernoulli(S0_) ? pickEven(S_, rng_) : pickOdd(S_, rng_));
+        m.item = rng_.bernoulli(P0_) ? pickEven(P_, rng_) : pickOdd(P_, rng_);
+        m.quantity = rng_.bernoulli(Q0_) ? pickEven(Q_, rng_) : pickOdd(Q_, rng_);
         bus_.procToNet(pid_).push(m);
         nextTime_ = currentTime + rng_.uniform(A_, B_);
     }
 
 private:
     int pid_, S_, P_, Q_;
-    double A_, B_, S0_, P0_, Q0_, nextTime_;
+    double A_, B_, nextTime_;
     MessageBus &bus_;
     RandomGenerator &rng_;
+    double S0_, P0_, Q0_;
 };
 
 class SupplierProcess : public DiscreteEventProcess {
 public:
-    SupplierProcess(int pid, int database_pid, int P, int Q, double V, double W, MessageBus &bus, RandomGenerator &rng)
-        : pid_(pid), database_pid_(database_pid), P_(P), Q_(Q), V_(V), W_(W), bus_(bus), rng_(rng) {}
+    SupplierProcess(int pid, int databasePid, int P, int Q, double V, double W, MessageBus &bus, RandomGenerator &rng)
+        : pid_(pid), databasePid_(databasePid), P_(P), Q_(Q), V_(V), W_(W), bus_(bus), rng_(rng) {}
 
     void initialize(double startTime) override {
         nextTime_ = startTime + rng_.uniform(V_, W_);
@@ -71,15 +70,14 @@ public:
         Message m;
         m.time = currentTime;
         m.sender = pid_;
-        m.receiver = database_pid_;
+        m.receiver = databasePid_;
         m.item = rng_.uniformInt(1, P_);
         m.quantity = (double)rng_.uniformInt(1, Q_);
         bus_.procToNet(pid_).push(m);
-
         nextTime_ = currentTime + rng_.uniform(V_, W_);
     }
 private:
-    int pid_, database_pid_, P_, Q_;
+    int pid_, databasePid_, P_, Q_;
     double V_, W_, nextTime_;
     MessageBus &bus_;
     RandomGenerator &rng_;
@@ -87,27 +85,29 @@ private:
 
 class ServerProcess : public DiscreteEventProcess {
 public:
-    ServerProcess(int pid, int C, int database_pid, int P, int Q, double ST0, double ST1, double SEP, double SOP, double QEA, double QOA, std::vector<int> costs, MessageBus &bus, RandomGenerator &rng, double serverReadDelay = 0.0, double serverWriteDelay = 0.0)
-        : pid_(pid), C_(C), database_pid_(database_pid), P_(P), Q_(Q), ST0_(ST0), ST1_(ST1), SEP_(SEP), SOP_(SOP), QEA_(QEA), QOA_(QOA), costs_(costs), bus_(bus), rng_(rng), serverReadDelay_(serverReadDelay), serverWriteDelay_(serverWriteDelay), sell_buy_(0.0), y_(0.0) {
-        cache_.assign(P_ + 1, {0, 0}); // Initialize cache with P+1 items (1-based indexing) and (quantity, cost) pairs set to (0,0)
+    ServerProcess(int pid, int C, int databasePid, int P, int Q, MessageBus &bus, RandomGenerator &rng, double ST0, double ST1, double SEP, double SOP, double QEA, double QOA, double T, std::vector<int> &costs, std::vector<double> &rr, double serverReadDelay = 0.0, double serverWriteDelay = 0.0)
+        : pid_(pid), C_(C), databasePid_(databasePid), P_(P), Q_(Q), bus_(bus), rng_(rng), ST0_(ST0), ST1_(ST1), SEP_(SEP), SOP_(SOP), QEA_(QEA), QOA_(QOA), T_(T), costs_(costs), rr_(rr), serverReadDelay_(serverReadDelay), serverWriteDelay_(serverWriteDelay), sellBuy_(0.0), y_(0.0), updateYTime_(0.0) {
     }
     
     void initialize(double startTime) override {
-        nextReadTime_ = startTime + 0.1;
-        inPending_.clear();
-
-        updateCacheTime_ = startTime + (pid_ % 2 == 0 ? ST0_ : ST1_);
-        sell_buy_ = 0.0;
-        y_ = 0.0;
-        // Initialize cost for each item in the cache
-        for (int i = 1; i <= P_; ++i) {
-            cache_[i].second = costs_[i]; 
+        if (serverReadDelay_ > 0.0) {
+            nextReadTime_ = startTime + serverReadDelay_;
+        } else {
+            nextReadTime_ = startTime + 0.1;
         }
+        inPending_.clear();
+        updateCacheTime_ = startTime + (pid_ % 2 == 0 ? ST0_ : ST1_);
+        cache_.assign(P_ + 1, {0, 0});
+        for (int i = 1; i <= P_; ++i) {
+            cache_[i].second = costs_[i];
+        }
+
     }
 
     double nextEventTime() const override {
         double t = nextReadTime_;
         t = std::min(t, updateCacheTime_);
+        t = std::min(t, updateYTime_);
         for (const auto &m : inPending_) {
             if (m.deliveryTime < t) {
                 t = m.deliveryTime;
@@ -118,51 +118,59 @@ public:
     
     void handleEvent(double currentTime) override {
 
-        pendingReady(currentTime);
-        
+        if (serverWriteDelay_ > 0.0) {
+            pendingReady(currentTime);
+        }
+
         if (currentTime >= updateCacheTime_) {
 
-            // ...
-
+            Message m;
+            m.time = currentTime;
+            m.sender = pid_;
+            m.receiver = databasePid_;
+            m.item = pid_ % 2 == 0 ?
+                    (rng_.bernoulli(SEP_) ? pickEven(P_, rng_) : pickOdd(P_, rng_)) : 
+                    (rng_.bernoulli(SOP_) ? pickOdd(P_, rng_) : pickEven(P_, rng_));
+            m.quantity = pid_ % 2 == 0 ?
+                    (rng_.bernoulli(QEA_) ? pickEven(Q_, rng_) : pickOdd(Q_, rng_)) : 
+                    (rng_.bernoulli(QOA_) ? pickOdd(Q_, rng_) : pickEven(Q_, rng_));
+            bus_.procToNet(pid_).push(m);
             updateCacheTime_ = currentTime + (pid_ % 2 == 0 ? ST0_ : ST1_);
         }
 
         if (currentTime >= nextReadTime_) {
+            bool processedMessage = false;
             auto &inbox = bus_.netToProc(pid_);
             while (!inbox.empty()) {
+                processedMessage = true;
                 Message m = inbox.front(); inbox.pop();
-                if (m.sender == database_pid_) {
-                    Message reply;
-                    reply.time = currentTime;
-                    reply.sender = pid_;
-                    reply.receiver = m.sender;
-                    reply.item = m.item;
-                    reply.quantity = m.quantity;
-                    if (serverWriteDelay_ <= 0.0) {
-                        bus_.procToNet(reply.receiver).push(reply);
-                    } else {
-                        inPending_.push_back({reply, currentTime + serverWriteDelay_});
-                    }
+                if (m.sender == databasePid_) {
+                    int received = (int)m.quantity;
+                    cache_[m.item].first += received;
+                    sellBuy_ -= received * cache_[m.item].second;
                 } else {
-                    // Customer message
+                    int requested = (int)m.quantity;
+                    int canSend = std::min(cache_[m.item].first, requested);
+                    cache_[m.item].first -= canSend;
+                    sellBuy_ += canSend * cache_[m.item].second;
                 }
             }
-            /** Alternative to while-loop if there is a server read delay:
-            if (!inbox.empty()) {
-                Message m = inbox.front(); inbox.pop();
-                ...
-                nextReadTime_ = currentTime + serverReadDelay_;
-            } else { 
-                nextReadTime_ = currentTime + 0.1;
-            }
-            */
-
-            // Generalized nextReadTime_ update to handle both cases (with or without server read delay)
-            if (serverReadDelay_ > 0.0) {
+            if (serverReadDelay_ > 0.0 && processedMessage) {
                 nextReadTime_ = currentTime + serverReadDelay_;
             } else {
                 nextReadTime_ = currentTime + 0.1;
             }
+        }
+
+        if (currentTime >= updateYTime_) {
+
+            double sum = 0;
+            for (int i = 1; i <= P_; ++i) {
+                sum += cache_[i].first * cache_[i].second;
+            }
+            y_ = y_ * + T_ * 0.1 * sum;
+            rr_[(pid_ -1 ) - 100] = (sellBuy_ - y_)/updateYTime_;
+            updateYTime_ = currentTime + T_;
         }
     }
 
@@ -185,31 +193,43 @@ private:
         }
     }
 
-    int pid_, C_, database_pid_, P_, Q_;
-    
-    double ST0_, ST1_, SEP_, SOP_, QEA_, QOA_;
-    std::vector<int> costs_;
-
+    int pid_, C_, databasePid_, P_, Q_;
     MessageBus &bus_;
     RandomGenerator &rng_;
     double nextReadTime_;
     std::vector<PendingOutMessage> inPending_;
+
+    double ST0_, ST1_;
+    double SEP_, SOP_;
+    double QEA_, QOA_;
+    double T_;
+    std::vector<int> &costs_;
+    std::vector<double> &rr_;
+
     double serverReadDelay_, serverWriteDelay_;
 
-    std::vector<std::pair<int, int>> cache_; // (quantity, cost)
-    double sell_buy_;
+    
+    double sellBuy_;
     double y_;
+    double updateYTime_;
+    std::vector<std::pair<int,int>> cache_;
     double updateCacheTime_;
     
+    
+
 };
 
 class DatabaseProcess : public DiscreteEventProcess {
 public:
-    DatabaseProcess(int pid, int C,int S, int F, int P, int Q, double r, std::vector<std::pair<int, int>> &inv, MessageBus &bus, RandomGenerator &rng, double dbReadDelay = 0.0, double dbWriteDelay = 0.0)
-        : pid_(pid), C_(C), S_(S), F_(F), P_(P), Q_(Q), r_(r), inv_(inv), bus_(bus), rng_(rng), dbReadDelay_(dbReadDelay), dbWriteDelay_(dbWriteDelay) {
+    DatabaseProcess(int pid, int C, int F, int S, int P, int Q, std::vector<std::pair<int, int>> &inventory, MessageBus &bus, RandomGenerator &rng, double dbReadDelay = 0.0, double dbWriteDelay = 0.0)
+        : pid_(pid), C_(C), F_(F), S_(S), P_(P), Q_(Q), inventory_(inventory), bus_(bus), rng_(rng), dbReadDelay_(dbReadDelay), dbWriteDelay_(dbWriteDelay) {
     }
     void initialize(double startTime) override {
-        nextReadTime_ = startTime + 0.1;
+        if (dbReadDelay_ > 0.0) {
+            nextReadTime_ = startTime + dbReadDelay_;
+        } else {
+            nextReadTime_ = startTime + 0.1;
+        }
         inPending_.clear();
     }
 
@@ -224,34 +244,36 @@ public:
     }
 
     void handleEvent(double currentTime) override {
-
-        pendingReady(currentTime);
-
+        if (dbWriteDelay_ > 0.0) {
+            pendingReady(currentTime);
+        }
         if (currentTime >= nextReadTime_) {
+            bool processedMessage = false;
             auto &inbox = bus_.netToProc(pid_);
             while (!inbox.empty()) {
+                processedMessage = true;
                 Message m = inbox.front(); inbox.pop();
                 bool isSupply = (m.sender >= C_ && m.sender < C_ + F_);
                 if (isSupply) {
-                    inv_[m.item].first += (int)m.quantity;
-                    if (dbReadDelay_ > 0.0) {
-                        nextReadTime_ = currentTime + dbReadDelay_;
-                    } else {
-                        nextReadTime_ = currentTime + 0.1;
-                    }
+                    inventory_[m.item].first += (int)m.quantity;
                 } else {
-                    // Server messages
+                    int requested = (int)m.quantity;
+                    int canSend = std::min(inventory_[m.item].first, requested);
+                    inventory_[m.item].first -= canSend;
+                    Message reply;
+                    reply.time = currentTime;
+                    reply.sender = pid_;
+                    reply.receiver = m.sender;
+                    reply.item = m.item;
+                    reply.quantity = (double)canSend;
+                    bus_.procToNet(pid_).push(reply);
                 }
             }
-            /** Alternative to while-loop if there is a db read delay:
-            if (!inbox.empty()) {
-                Message m = inbox.front(); inbox.pop();
-                ...
+            if (dbReadDelay_ > 0.0 && processedMessage) {
                 nextReadTime_ = currentTime + dbReadDelay_;
-            } else { 
+            } else {
                 nextReadTime_ = currentTime + 0.1;
             }
-            */
         }
     }
     
@@ -273,18 +295,15 @@ private:
             }
         }
     }
-    int pid_, C_, S_, F_, P_, Q_;
 
-    double r_;
-    std::vector<std::pair<int, int>> &inv_;
-
+    int pid_, C_, F_, S_, P_, Q_;
+    std::vector<std::pair<int, int>> &inventory_;
     MessageBus &bus_;
     RandomGenerator &rng_;
+
     double nextReadTime_;
     std::vector<PendingOutMessage> inPending_;
     double dbReadDelay_, dbWriteDelay_;
-    
-    
 };
 
 }
@@ -294,8 +313,8 @@ int main() {
     SELib::ParameterParser parser;
     if (!parser.parseFile("parameters.txt")) return 1;
     
-    double H = parser.getDouble("H"); // simulation horizon
-    int M = parser.getInt("M"); // number of simulations
+    double H = parser.getDouble("H"); // Simulation horizon
+    int M = parser.getInt("M"); // Number of simulations
 
     int C = parser.getInt("C");
     int S = parser.getInt("S");
@@ -310,8 +329,9 @@ int main() {
     int P = parser.getInt("P");
     int Q = parser.getInt("Q");
 
-    double r = parser.getDouble("r"); // Uniform delay
-    
+    double r = parser.getDouble("r");
+    double T = parser.getDouble("T");
+
     double S0 = parser.getDouble("S0");
     double P0 = parser.getDouble("P0");
     double Q0 = parser.getDouble("Q0");
@@ -327,52 +347,80 @@ int main() {
     SELib::Statistics stats;
     for (int m = 0; m < M; ++m) {
 
-        // Init message bus
         SELib::MessageBus bus(200);
-
-        // Init DES system
         SELib::DiscreteEventSystem system;
+        int databasePid = 199;
 
-        double reward_rate = 0.0;
-
-        std::vector<std::pair<int, int>> inv;
-        std::vector<int> costs(P + 1, 0); // For server
-        inv.assign(P + 1, {0, 0}); // (quantity, cost)
+        std::vector<int> costs(P + 1, 0);
+        std::vector<std::pair<int, int>> inventory;
+        inventory.assign(P + 1, {0, 0}); // 1-based indexing for items
         for (int i = 1; i <= P; ++i) {
-            inv[i].first = rng.uniformInt(0, Q);
-            inv[i].second = rng.uniformInt(1, 100);
-            costs[i] = inv[i].second;
+            inventory[i].first = rng.uniformInt(0, Q);
+            inventory[i].second = rng.uniformInt(1, 100);
+            costs[i] = inventory[i].second;
         }
-
-        int database_pid = 199; // Fixed PID for the centralized database process
-
-        // Create processes: C customers, F suppliers, S servers, 1 router and 1 centralized database
+        std::vector<double> rr(S, 0);
+        
         for(int i=0; i<C; ++i) {
-            system.emplaceProcess<SELib::CustomerProcess>(i, S, P, Q, A, B, S0, P0, Q0, bus, rng);
+            system.emplaceProcess<SELib::CustomerProcess>(i, S, P, Q, A, B, bus, rng, S0, P0, Q0);
         }
         for(int i=0; i<F; ++i) {
-            system.emplaceProcess<SELib::SupplierProcess>(C+i, database_pid, P, Q, V, W, bus, rng);
+            system.emplaceProcess<SELib::SupplierProcess>(C+i, databasePid, P, Q, V, W, bus, rng);
         }
         for(int i=0; i<S; ++i) {
-            system.emplaceProcess<SELib::ServerProcess>(100+i, C, database_pid, P, Q, ST0, ST1, SEP, SOP, QEA, QOA, costs, bus, rng);
+            system.emplaceProcess<SELib::ServerProcess>(100+(i+1), C, databasePid, P, Q, bus, rng, ST0, ST1, SEP, SOP, QEA, QOA, T, costs, rr, 0, 0); // (serverReadDelay, serverWriteDelay)
         }
-        system.emplaceProcess<SELib::DatabaseProcess>(database_pid, C, S, F, P, Q, r, inv, bus, rng);
-        // If 0.01 then 200 process -> 200 * 0.01 = 2s of delay just for the router to do one scan of all processes,
-        // which is too much. With 0.0001 it's 0.02s which is acceptable for our simulation scale
-        // Warn: if set to very low values like 0.00001, the router might cause a bottleneck and
-        // significantly increase simulation time due to excessive scanning frequency.
-        system.emplaceProcess<SELib::NetworkRouter>(bus, rng, 0.0001, r); 
+        system.emplaceProcess<SELib::DatabaseProcess>(databasePid, C, F, S, P, Q, inventory, bus, rng, 0, 0); // (dbReadDelay, dbWriteDelay)
+        system.emplaceProcess<SELib::NetworkRouter>(bus, rng, 0.0001, r); // (scanPeriod, networkDelay)
 
-        // Init DES simulator 
         SELib::DiscreteEventSimulator sim(system);
-
-        // Run simulation
         sim.run(H);
 
-        stats.addSample(reward_rate / H);
+        double result = 0;
+        for (int i = 0; i < S; ++i) {
+            result += rr[i];
+        }
+
+        stats.addSample(result / H);
     }
     std::ofstream outFile("results.txt");
     outFile << "2026-06-02-Alessandro-Tang-2106357" << std::endl;
-    outFile << "R " << std::fixed << std::setprecision(6) << stats.mean() << std::endl;
+    outFile << "RR " << std::fixed << std::setprecision(6) << stats.mean() << std::endl;
     return 0;
 }
+
+
+/*
+    Graveyard of old code pieces versions
+
+    Siccome si usa WHILE allora non esiste un db read delay
+    quindi sarà sempre nextReadTime_ = currentTime + 0.1;
+    Pezzo di codice da rimuovere se si ha un db read delay
+    e quindi si usa IF al posto di WHILE per processare un solo messaggio alla volta
+    in quanto se non c'è un messaggio da leggere allora andrà qui e siccome c'è
+    un db read delay allora farà nextReadTime_ = currentTime + dbReadDelay_
+    anche se non ha letto un messaggio per poter giustificare un aumento di db read delay
+    
+    if (dbReadDelay_ > 0.0) {
+        nextReadTime_ = currentTime + dbReadDelay_;
+    } else {
+        nextReadTime_ = currentTime + 0.1;
+    }
+    
+    In tal caso aggiungere il codice seguente al posto di quello sopra
+    
+    else { nextReadTime_ = currentTime + 0.1; }
+
+    -----------------------------------------
+
+    Alternative inventory initialization that includes cost values
+
+    std::vector<std::pair<int, int>> inventory;
+    inventory.assign(P + 1, {0, 0}); // (quantity, cost)
+    for (int i = 1; i <= P; ++i) {
+        inventory[i].first = rng.uniformInt(0, Q);
+        inventory[i].second = rng.uniformInt(1, maxCost); 
+    }
+
+
+*/
