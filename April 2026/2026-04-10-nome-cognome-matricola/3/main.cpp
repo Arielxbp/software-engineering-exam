@@ -38,7 +38,7 @@ public:
         Message m;
         m.time = currentTime;
         m.sender = pid_;
-        m.receiver = 100 + (rng_.bernoulli(S0_) ? pickEven(S_, rng_) : pickOdd(S_, rng_));
+        m.receiver = 120 + (rng_.bernoulli(S0_) ? pickEven(S_, rng_) : pickOdd(S_, rng_));
         m.item = rng_.bernoulli(P0_) ? pickEven(P_, rng_) : pickOdd(P_, rng_);
         m.quantity = rng_.bernoulli(Q0_) ? pickEven(Q_, rng_) : pickOdd(Q_, rng_);
         bus_.procToNet(pid_).push(m);
@@ -96,6 +96,7 @@ public:
             nextReadTime_ = startTime + 0.1;
         }
         inPending_.clear();
+        updateYTime_ = startTime + T_;
         updateCacheTime_ = startTime + (pid_ % 2 == 0 ? ST0_ : ST1_);
         cache_.assign(P_ + 1, {0, 0});
         for (int i = 1; i <= P_; ++i) {
@@ -168,8 +169,8 @@ public:
             for (int i = 1; i <= P_; ++i) {
                 sum += cache_[i].first * cache_[i].second;
             }
-            y_ = y_ * + T_ * 0.1 * sum;
-            rr_[(pid_ -1 ) - 100] = (sellBuy_ - y_)/updateYTime_;
+            y_ = y_ + T_ * 0.1 * sum;
+            rr_[(pid_ -1 ) - 120] = (sellBuy_ - y_)/updateYTime_;
             updateYTime_ = currentTime + T_;
         }
     }
@@ -346,7 +347,7 @@ int main() {
 
     SELib::Statistics stats;
     for (int m = 0; m < M; ++m) {
-
+        printf("Starting simulation %d/%d\n", m+1, M);
         SELib::MessageBus bus(200);
         SELib::DiscreteEventSystem system;
         int databasePid = 199;
@@ -368,7 +369,7 @@ int main() {
             system.emplaceProcess<SELib::SupplierProcess>(C+i, databasePid, P, Q, V, W, bus, rng);
         }
         for(int i=0; i<S; ++i) {
-            system.emplaceProcess<SELib::ServerProcess>(100+(i+1), C, databasePid, P, Q, bus, rng, ST0, ST1, SEP, SOP, QEA, QOA, T, costs, rr, 0, 0); // (serverReadDelay, serverWriteDelay)
+            system.emplaceProcess<SELib::ServerProcess>(120+(i+1), C, databasePid, P, Q, bus, rng, ST0, ST1, SEP, SOP, QEA, QOA, T, costs, rr, 0, 0); // (serverReadDelay, serverWriteDelay)
         }
         system.emplaceProcess<SELib::DatabaseProcess>(databasePid, C, F, S, P, Q, inventory, bus, rng, 0, 0); // (dbReadDelay, dbWriteDelay)
         system.emplaceProcess<SELib::NetworkRouter>(bus, rng, 0.0001, r); // (scanPeriod, networkDelay)
@@ -381,7 +382,7 @@ int main() {
             result += rr[i];
         }
 
-        stats.addSample(result / H);
+        stats.addSample(result);
     }
     std::ofstream outFile("results.txt");
     outFile << "2026-06-02-Alessandro-Tang-2106357" << std::endl;
