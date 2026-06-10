@@ -361,7 +361,14 @@ int main() {
             costs[i] = inventory[i].second;
         }
         std::vector<double> rr(S, 0);
-        
+
+        // If there is only 1 server and S0 is different from 0
+        // then some messages could be sent to even servers that do not exist and thus lost forever
+        // thus causing the system to not compute the correct rr value
+        if (S == 1) {
+            S0 = 0;
+        }
+
         for(int i=0; i<C; ++i) {
             system.emplaceProcess<SELib::CustomerProcess>(i, S, P, Q, A, B, bus, rng, S0, P0, Q0);
         }
