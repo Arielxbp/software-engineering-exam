@@ -20,8 +20,8 @@ static int pickOdd(int N, RandomGenerator &rng) {
 
 class CustomerProcess : public DiscreteEventProcess {
 public:
-    CustomerProcess(int pid, int S, int P, int Q, double A, double B, MessageBus &bus, RandomGenerator &rng)
-        : pid_(pid), S_(S), P_(P), Q_(Q), A_(A), B_(B), bus_(bus), rng_(rng) {}
+    CustomerProcess(int pid, int S, int P, int Q, double A, double B, int serverBase, MessageBus &bus, RandomGenerator &rng)
+        : pid_(pid), S_(S), P_(P), Q_(Q), A_(A), B_(B), serverBase_(serverBase), bus_(bus), rng_(rng) {}
     
     void initialize(double startTime) override {
         nextTime_ = startTime + rng_.uniform(A_, B_);
@@ -35,7 +35,7 @@ public:
         Message m;
         m.time = currentTime;
         m.sender = pid_;
-        m.receiver = 100 + rng_.uniformInt(0, S_ - 1);
+        m.receiver = serverBase_ + rng_.uniformInt(0, S_ - 1);
         m.item = rng_.uniformInt(1, P_);
         m.quantity = (double)rng_.uniformInt(1, Q_);
         bus_.procToNet(pid_).push(m);
@@ -43,7 +43,7 @@ public:
     }
 
 private:
-    int pid_, S_, P_, Q_;
+    int pid_, S_, P_, Q_, serverBase_;
     double A_, B_, nextTime_;
     MessageBus &bus_;
     RandomGenerator &rng_;
@@ -276,9 +276,11 @@ int main() {
     SELib::Statistics stats;
     for (int m = 0; m < M; ++m) {
 
-        SELib::MessageBus bus(200);
+        int supplierBase = C;
+        int serverBase = C + F;
+        int databasePid = C + F + S;
+        SELib::MessageBus bus(databasePid + 1);
         SELib::DiscreteEventSystem system;
-        int databasePid = 199;
 
         double missedSales = 0.0;
         std::vector<int> inventory;
@@ -288,13 +290,13 @@ int main() {
         }
         
         for(int i=0; i<C; ++i) {
-            system.emplaceProcess<SELib::CustomerProcess>(i, S, P, Q, A, B, bus, rng);
+            system.emplaceProcess<SELib::CustomerProcess>(i, S, P, Q, A, B, serverBase, bus, rng);
         }
         for(int i=0; i<F; ++i) {
-            system.emplaceProcess<SELib::SupplierProcess>(C+i, databasePid, P, Q, V, W, bus, rng);
+            system.emplaceProcess<SELib::SupplierProcess>(supplierBase+i, databasePid, P, Q, V, W, bus, rng);
         }
         for(int i=0; i<S; ++i) {
-            system.emplaceProcess<SELib::ServerProcess>(100+i, C, databasePid, P, Q, bus, rng, 0, 0); // (serverReadDelay, serverWriteDelay)
+            system.emplaceProcess<SELib::ServerProcess>(serverBase+i, C, databasePid, P, Q, bus, rng, 0, 0); // (serverReadDelay, serverWriteDelay)
         }
         system.emplaceProcess<SELib::DatabaseProcess>(databasePid, C, F, S, P, Q, inventory, bus, rng, missedSales, 0, 0); // (dbReadDelay, dbWriteDelay)
         system.emplaceProcess<SELib::NetworkRouter>(bus, rng, 0.0001, 0); // (scanPeriod, networkDelay)
