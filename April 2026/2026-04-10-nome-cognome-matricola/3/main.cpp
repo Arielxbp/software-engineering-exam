@@ -347,7 +347,6 @@ int main() {
 
     SELib::Statistics stats;
     for (int m = 0; m < M; ++m) {
-        printf("Starting simulation %d/%d\n", m+1, M);
         SELib::MessageBus bus(200);
         SELib::DiscreteEventSystem system;
         int databasePid = 199;
