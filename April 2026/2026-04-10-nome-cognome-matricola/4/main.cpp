@@ -9,6 +9,8 @@
 #include "include/Random.hpp"
 #include "include/Stat.hpp"
 
+static int serversBase = 200;
+
 namespace SELib {
 
 // Can return even numbers in [2,N]
@@ -38,7 +40,7 @@ public:
         Message m;
         m.time = currentTime;
         m.sender = pid_;
-        m.receiver = 400 + (rng_.bernoulli(S0_) ? pickEven(S_, rng_) : pickOdd(S_, rng_));
+        m.receiver = serversBase + (rng_.bernoulli(S0_) ? pickEven(S_, rng_) : pickOdd(S_, rng_));
         m.item = rng_.bernoulli(P0_) ? pickEven(P_, rng_) : pickOdd(P_, rng_);
         m.quantity = rng_.bernoulli(Q0_) ? pickEven(Q_, rng_) : pickOdd(Q_, rng_);
         bus_.procToNet(pid_).push(m);
@@ -170,7 +172,7 @@ public:
                 sum += cache_[i].first * cache_[i].second;
             }
             y_ = y_ + T_ * 0.1 * sum;
-            rr_[(pid_ - 1) - 400] = (sellBuy_ - y_)/updateYTime_;
+            rr_[(pid_ -1 ) - serversBase] = (sellBuy_ - y_)/updateYTime_;
             updateYTime_ = currentTime + T_;
         }
     }
@@ -307,6 +309,62 @@ private:
     double dbReadDelay_, dbWriteDelay_;
 };
 
+double runMsims(double H, int M, int C, int S, int F, double A, double B, double V, double W, int P, int Q, double r, double T, double S0, double P0, double Q0, double ST0, double ST1, double SEP, double SOP, double QEA, double QOA, SELib::RandomGenerator &rng) {
+    SELib::Statistics stats;
+    for (int m = 0; m < M; ++m) {
+        // Init message bus
+        SELib::MessageBus bus(serversBase + 100);
+
+        // Init DES system
+        SELib::DiscreteEventSystem system;
+        int databasePid = 299; // Fixed PID for the centralized database process
+
+        std::vector<int> costs(P + 1, 0);
+        std::vector<std::pair<int, int>> inventory;
+        inventory.assign(P + 1, {0, 0}); // 1-based indexing for items
+        for (int i = 1; i <= P; ++i) {
+            inventory[i].first = rng.uniformInt(0, Q);
+            inventory[i].second = rng.uniformInt(1, 100);
+            costs[i] = inventory[i].second;
+        }
+        std::vector<double> rr(S, 0);
+
+        // If there is only 1 server and S0 is different from 0
+        // then some messages could be sent to even servers that do not exist and thus lost forever
+        // thus causing the system to not compute the correct rr value
+        if (S == 1) {
+            S0 = 0;
+        }
+
+        // Create processes: C customers, F suppliers, S servers, 1 router and 1 centralized database
+        for(int i=0; i<C; ++i) {
+            system.emplaceProcess<SELib::CustomerProcess>(i, S, P, Q, A, B, bus, rng, S0, P0, Q0);
+        }
+        for(int i=0; i<F; ++i) {
+            system.emplaceProcess<SELib::SupplierProcess>(C+i, databasePid, P, Q, V, W, bus, rng);
+        }
+        for(int i=0; i<S; ++i) {
+            system.emplaceProcess<SELib::ServerProcess>(serversBase+(i+1), C, databasePid, P, Q, bus, rng, ST0, ST1, SEP, SOP, QEA, QOA, T, costs, rr, 0, 0); // (serverReadDelay, serverWriteDelay)
+        }
+        system.emplaceProcess<SELib::DatabaseProcess>(databasePid, C, F, S, P, Q, inventory, bus, rng, 0, 0); // (dbReadDelay, dbWriteDelay)
+        system.emplaceProcess<SELib::NetworkRouter>(bus, rng, 0.1, r); // (scanPeriod, networkDelay)
+        
+        // Init DES simulator 
+        SELib::DiscreteEventSimulator sim(system);
+
+        // Run simulation
+        sim.run(H);
+
+        double result = 0;
+        for (int i = 0; i < S; ++i) {
+            result += rr[i];
+        }
+
+        stats.addSample(result);
+    }
+    return stats.mean();
+}
+
 }
 
 int main() {
@@ -345,89 +403,40 @@ int main() {
     double QEA = parser.getDouble("QEA");
     double QOA = parser.getDouble("QOA");
 
-    SELib::Statistics stats;
-    for (int m = 0; m < M; ++m) {
-        SELib::MessageBus bus(601);
-        SELib::DiscreteEventSystem system;
-        int databasePid = 600;
+    int G = parser.getInt("G");
+    double a = parser.getDouble("a");
+    double b = parser.getDouble("b");
 
-        std::vector<int> costs(P + 1, 0);
-        std::vector<std::pair<int, int>> inventory;
-        inventory.assign(P + 1, {0, 0}); // 1-based indexing for items
-        for (int i = 1; i <= P; ++i) {
-            inventory[i].first = rng.uniformInt(0, Q);
-            inventory[i].second = rng.uniformInt(1, 100);
-            costs[i] = inventory[i].second;
+    double max_rr = -1e18;
+    double best_ST0 = -1;
+    double best_ST1 = -1;
+    std::vector<std::pair<double, double>> best_ST0_ST1;
+    for (int k = 0; k <= G; ++k) {
+        ST0 = a + k * (b - a) / G;
+        for (int kk = 0; kk <= G; ++kk) {
+            ST1 = a + kk * (b - a) / G;
+            printf("Testing ST0=%.6f, ST1=%.6f\n", ST0, ST1);
+            double rr = SELib::runMsims(H, M, C, S, F, A, B, V, W, P, Q, r, T, S0, P0, Q0, ST0, ST1, SEP, SOP, QEA, QOA, rng);
+            if (rr > max_rr) {
+                max_rr = rr;
+                best_ST0_ST1.clear();
+                best_ST0_ST1.emplace_back(ST0, ST1);
+            } else if (rr == max_rr) {
+                best_ST0_ST1.emplace_back(ST0, ST1);
+            }
         }
-        std::vector<double> rr(S, 0);
-
-        // If there is only 1 server and S0 is different from 0
-        // then some messages could be sent to even servers that do not exist and thus lost forever
-        // thus causing the system to not compute the correct rr value
-        if (S == 1) {
-            S0 = 0;
-        }
-
-        for(int i=0; i<C; ++i) {
-            system.emplaceProcess<SELib::CustomerProcess>(i, S, P, Q, A, B, bus, rng, S0, P0, Q0);
-        }
-        for(int i=0; i<F; ++i) {
-            system.emplaceProcess<SELib::SupplierProcess>(C+i, databasePid, P, Q, V, W, bus, rng);
-        }
-        for(int i=0; i<S; ++i) {
-            system.emplaceProcess<SELib::ServerProcess>(400+(i+1), C, databasePid, P, Q, bus, rng, ST0, ST1, SEP, SOP, QEA, QOA, T, costs, rr, 0, 0); // (serverReadDelay, serverWriteDelay)
-        }
-        system.emplaceProcess<SELib::DatabaseProcess>(databasePid, C, F, S, P, Q, inventory, bus, rng, 0, 0); // (dbReadDelay, dbWriteDelay)
-        system.emplaceProcess<SELib::NetworkRouter>(bus, rng, 0.1, r); // (scanPeriod, networkDelay)
-
-        SELib::DiscreteEventSimulator sim(system);
-        sim.run(H);
-
-        double result = 0;
-        for (int i = 0; i < S; ++i) {
-            result += rr[i];
-        }
-
-        stats.addSample(result);
     }
+
+    if (best_ST0_ST1.size() >= 1) {
+        best_ST0 = best_ST0_ST1[0].first;
+        best_ST1 = best_ST0_ST1[0].second;
+    }
+
     std::ofstream outFile("results.txt");
     outFile << "2026-06-02-Alessandro-Tang-2106357" << std::endl;
-    outFile << "RR " << std::fixed << std::setprecision(6) << stats.mean() << std::endl;
+    outFile << "RR " << std::fixed << std::setprecision(6) << max_rr << std::endl;
+    outFile << "ST0: " << std::fixed << std::setprecision(6) << best_ST0 << std::endl;
+    outFile << "ST1: " << std::fixed << std::setprecision(6) << best_ST1 << std::endl;
     return 0;
 }
 
-
-/*
-    Graveyard of old code pieces versions
-
-    Siccome si usa WHILE allora non esiste un db read delay
-    quindi sarà sempre nextReadTime_ = currentTime + 0.1;
-    Pezzo di codice da rimuovere se si ha un db read delay
-    e quindi si usa IF al posto di WHILE per processare un solo messaggio alla volta
-    in quanto se non c'è un messaggio da leggere allora andrà qui e siccome c'è
-    un db read delay allora farà nextReadTime_ = currentTime + dbReadDelay_
-    anche se non ha letto un messaggio per poter giustificare un aumento di db read delay
-    
-    if (dbReadDelay_ > 0.0) {
-        nextReadTime_ = currentTime + dbReadDelay_;
-    } else {
-        nextReadTime_ = currentTime + 0.1;
-    }
-    
-    In tal caso aggiungere il codice seguente al posto di quello sopra
-    
-    else { nextReadTime_ = currentTime + 0.1; }
-
-    -----------------------------------------
-
-    Alternative inventory initialization that includes cost values
-
-    std::vector<std::pair<int, int>> inventory;
-    inventory.assign(P + 1, {0, 0}); // (quantity, cost)
-    for (int i = 1; i <= P; ++i) {
-        inventory[i].first = rng.uniformInt(0, Q);
-        inventory[i].second = rng.uniformInt(1, maxCost); 
-    }
-
-
-*/

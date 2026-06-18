@@ -255,7 +255,7 @@ private:
 }
 
 int main() {
-    SELib::RandomGenerator rng(0);
+    SELib::RandomGenerator rng(std::random_device{}());
     SELib::ParameterParser parser;
     if (!parser.parseFile("parameters.txt")) return 1;
     

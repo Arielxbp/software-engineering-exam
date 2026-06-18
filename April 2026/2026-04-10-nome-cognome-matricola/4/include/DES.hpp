@@ -68,7 +68,7 @@ class NetworkRouter : public DiscreteEventProcess {
 public:
   NetworkRouter(MessageBus &bus, RandomGenerator &rng, double scanPeriod = 0.1, double deliveryDelay = 0.0)
       : bus_(bus), rng_(rng), scanPeriod_(scanPeriod), deliveryDelay_(deliveryDelay), time_(0.0),
-        nextScanTime_(0.0), scanned_(0) {}
+        nextScanTime_(0.0) {}
 
   void initialize(double startTime) override {
     time_ = startTime;
@@ -86,7 +86,6 @@ public:
       scanner_[i] = i;
     }
     reshuffleScanner();
-    scanned_ = 0;
   }
 
   double nextEventTime() const override {
@@ -110,26 +109,25 @@ public:
     if (n == 0)
       return;
 
-    if (scanned_ >= n) {
-      scanned_ = 0;
-      reshuffleScanner();
-    }
+    reshuffleScanner();
 
-    const int channel = scanner_[scanned_++];
-    auto &fromQueue = bus_.procToNet(channel);
+    for (int idx = 0; idx < n; ++idx) {
+      int channel = scanner_[idx];
+      auto &fromQueue = bus_.procToNet(channel);
 
-    if (!fromQueue.empty()) {
-      Message m = fromQueue.front();
-      fromQueue.pop();
+      while (!fromQueue.empty()) {
+        Message m = fromQueue.front();
+        fromQueue.pop();
 
-      if (m.receiver < 0 || m.receiver >= static_cast<int>(bus_.size())) {
-        throw std::runtime_error("NetworkRouter: invalid receiver index");
-      }
+        if (m.receiver < 0 || m.receiver >= static_cast<int>(bus_.size())) {
+          throw std::runtime_error("NetworkRouter: invalid receiver index");
+        }
 
-      if (deliveryDelay_ <= 0.0) {
-        bus_.netToProc(m.receiver).push(m);
-      } else {
-        inTransit_.push_back({m, currentTime + deliveryDelay_});
+        if (deliveryDelay_ <= 0.0) {
+          bus_.netToProc(m.receiver).push(m);
+        } else {
+          inTransit_.push_back({m, currentTime + deliveryDelay_});
+        }
       }
     }
 
@@ -168,7 +166,6 @@ private:
   double time_;
   double nextScanTime_;
   std::vector<int> scanner_;
-  int scanned_;
   std::vector<InTransitMessage> inTransit_;
 };
 
