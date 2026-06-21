@@ -310,7 +310,7 @@ int main() {
             system.emplaceProcess<SELib::ServerProcess>(100+i, C, databasePid, P, Q, bus, rng, z, v); // (serverReadDelay, serverWriteDelay)
         }
         system.emplaceProcess<SELib::DatabaseProcess>(databasePid, C, F, S, P, Q, inventory, bus, rng, missedSales, transactions, l, s); // (dbReadDelay, dbWriteDelay)
-        system.emplaceProcess<SELib::NetworkRouter>(bus, rng, 0.0001, r + w); // (scanPeriod, networkDelay)
+        system.emplaceProcess<SELib::NetworkRouter>(bus, rng, 0.1, r + w); // (scanPeriod, networkDelay)
 
         SELib::DiscreteEventSimulator sim(system);
         sim.run(H);

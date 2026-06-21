@@ -9,8 +9,6 @@
 #include "include/Random.hpp"
 #include "include/Stat.hpp"
 
-static int serversBase = 200;
-
 namespace SELib {
 
 // Can return even numbers in [2,N]
@@ -40,7 +38,7 @@ public:
         Message m;
         m.time = currentTime;
         m.sender = pid_;
-        m.receiver = serversBase + (rng_.bernoulli(S0_) ? pickEven(S_, rng_) : pickOdd(S_, rng_));
+        m.receiver = 400 + (rng_.bernoulli(S0_) ? pickEven(S_, rng_) : pickOdd(S_, rng_));
         m.item = rng_.bernoulli(P0_) ? pickEven(P_, rng_) : pickOdd(P_, rng_);
         m.quantity = rng_.bernoulli(Q0_) ? pickEven(Q_, rng_) : pickOdd(Q_, rng_);
         bus_.procToNet(pid_).push(m);
@@ -172,7 +170,7 @@ public:
                 sum += cache_[i].first * cache_[i].second;
             }
             y_ = y_ + T_ * 0.1 * sum;
-            rr_[(pid_ -1 ) - serversBase] = (sellBuy_ - y_)/updateYTime_;
+            rr_[(pid_ - 1) - 400] = (sellBuy_ - y_)/updateYTime_;
             updateYTime_ = currentTime + T_;
         }
     }
@@ -313,11 +311,11 @@ double runMsims(double H, int M, int C, int S, int F, double A, double B, double
     SELib::Statistics stats;
     for (int m = 0; m < M; ++m) {
         // Init message bus
-        SELib::MessageBus bus(serversBase + 100);
+        SELib::MessageBus bus(601);
 
         // Init DES system
         SELib::DiscreteEventSystem system;
-        int databasePid = 299; // Fixed PID for the centralized database process
+        int databasePid = 600; // Fixed PID for the centralized database process
 
         std::vector<int> costs(P + 1, 0);
         std::vector<std::pair<int, int>> inventory;
@@ -344,7 +342,7 @@ double runMsims(double H, int M, int C, int S, int F, double A, double B, double
             system.emplaceProcess<SELib::SupplierProcess>(C+i, databasePid, P, Q, V, W, bus, rng);
         }
         for(int i=0; i<S; ++i) {
-            system.emplaceProcess<SELib::ServerProcess>(serversBase+(i+1), C, databasePid, P, Q, bus, rng, ST0, ST1, SEP, SOP, QEA, QOA, T, costs, rr, 0, 0); // (serverReadDelay, serverWriteDelay)
+            system.emplaceProcess<SELib::ServerProcess>(400+(i+1), C, databasePid, P, Q, bus, rng, ST0, ST1, SEP, SOP, QEA, QOA, T, costs, rr, 0, 0); // (serverReadDelay, serverWriteDelay)
         }
         system.emplaceProcess<SELib::DatabaseProcess>(databasePid, C, F, S, P, Q, inventory, bus, rng, 0, 0); // (dbReadDelay, dbWriteDelay)
         system.emplaceProcess<SELib::NetworkRouter>(bus, rng, 0.1, r); // (scanPeriod, networkDelay)
