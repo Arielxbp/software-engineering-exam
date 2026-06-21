@@ -432,10 +432,11 @@ int main() {
     }
 
     if (best_SEP_SOP_QEA_QOA.size() >= 1) {
-        best_SEP = std::get<0>(best_SEP_SOP_QEA_QOA[rng.uniformInt(0, best_SEP_SOP_QEA_QOA.size() - 1)]);
-        best_SOP = std::get<1>(best_SEP_SOP_QEA_QOA[rng.uniformInt(0, best_SEP_SOP_QEA_QOA.size() - 1)]);
-        best_QEA = std::get<2>(best_SEP_SOP_QEA_QOA[rng.uniformInt(0, best_SEP_SOP_QEA_QOA.size() - 1)]);
-        best_QOA = std::get<3>(best_SEP_SOP_QEA_QOA[rng.uniformInt(0, best_SEP_SOP_QEA_QOA.size() - 1)]);
+        int id = rng.uniformInt(0, best_SEP_SOP_QEA_QOA.size() - 1);
+        best_SEP = std::get<0>(best_SEP_SOP_QEA_QOA[id]);
+        best_SOP = std::get<1>(best_SEP_SOP_QEA_QOA[id]);
+        best_QEA = std::get<2>(best_SEP_SOP_QEA_QOA[id]);
+        best_QOA = std::get<3>(best_SEP_SOP_QEA_QOA[id]);
     }
 
     std::ofstream outFile("results.txt");
