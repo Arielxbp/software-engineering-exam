@@ -1,0 +1,40 @@
+test1: S=1, C=1, [A,B]=[1,2]
+test2: S=1, C=10, [A,B]=[1,2]
+test3: S=1, C=100, [A,B]=[1,2]
+test4: S=10, C=10, [A,B]=[1,2]
+test5: S=1, C=10, [A,B]=[0.1,0.2]
+
+Req 1:
+
+A parità di altre condizioni,
+con C = 10 (Ex3.Test2) ho un reward maggiore che con C=1 customer (Ex3.Test1)
+
+Ex3.Test1.RR <= Ex3.Test2.RR
+
+--------------------------------------
+Req 2:
+
+A parità di altre condizioni,
+con C = 100 (Ex3.Test3) ho un reward maggiore che con C=10 customer (Ex3.Test2)
+e che con C = 1 (Ex3.Test1). 
+
+Ex3.Test2.RR <= Ex3.Test3.RR
+Ex3.Test1.RR <= Ex3.Test3.RR
+
+----------------------------------
+
+Req 3:
+
+A parità di altre condizioni,(C=10)
+con S = 1 (Ex3.Test2) ho un reward maggiore che con S=10  (Ex3.Test4).
+
+Ex3.Test4.RR <= Ex3.Test2.RR
+
+---------------------------
+Req 4:
+
+A parità di altre condizioni,
+aumentando la velocità dei customer il reward aumenta.
+
+Ex3.Test2.RR <= Ex3.Test5.RR
+

@@ -1,0 +1,28 @@
+Req 1:
+
+Se c'è un drone solo allora non ci sono collisioni.
+Quindi Test 1 deve ritornare 0.
+
+
+Req 2:
+
+A parità di altre condizioni, il collision rate aumenta con il numero di droni.
+Quindi:
+Test1.C <= Test2.c
+Test2.C <= Test3.C
+Test4.C <= test5.C
+
+Req 3:
+
+A parità di altre condizioni, all'aumentare dell'area di minuisce il collision rate. Quindi:
+Test3.C <= Test5.C
+
+Req 4:
+
+A parità di altre condizioni, il collision rate della versione con collision avoidance è minore di quella della versione random.
+Quindi:
+Ex2.Test2.C <= Ex1.Test2.C
+Ex2.Test3.C <= Ex1.Test3.C
+Ex2.Test4.C <= Ex1.Test4.C
+Ex2.Test5.C <= Ex1.Test5.C
+

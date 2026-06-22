@@ -1,0 +1,36 @@
+test1: S=1, C=1, [A,B]=[1,2]
+test2: S=1, C=10, [A,B]=[1,2]
+test3: S=1, C=100, [A,B]=[1,2]
+test4: S=10, C=10, [A,B]=[1,2]
+test5: S=1, C=10, [A,B]=[0.1,0.2]
+
+Req 1:
+
+Il valore ottimo del reward per EX5  è maggiore a quello di EX3
+
+Ex3.Test1.RR <= Ex5.Test1.RR
+Ex3.Test2.RR <= Ex5.Test2.RR
+
+--------------------------------------
+Req 2:
+
+Il valore ottimo del reward per EX5  è maggiore a quello di EX3
+
+Ex3.Test3.RR <= Ex5.Test3.RR
+
+
+----------------------------------
+
+Req 3:
+
+Il valore ottimo del reward per EX5  è maggiore a quello di EX3
+
+Ex3.Test4.RR <= Ex5.Test4.RR
+
+
+---------------------------
+Req 4:
+
+Il valore ottimo del reward per EX5  è maggiore a quello di EX3
+
+Ex3.Test5.RR <= Ex5.Test5.RR

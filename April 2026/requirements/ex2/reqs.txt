@@ -1,0 +1,38 @@
+Req 1:
+
+A parità di altre condizioni,
+al diminuire di D aumenta il collision rate
+
+Ex2.Test2.C <= Ex2.Test1.c
+
+--------------------------------------
+Req 2:
+
+A parità di altre condizioni,
+il collision rate aumenta con il numero di droni.
+Quindi:
+Test2.C <= Test3.c
+
+----------------------------------
+
+Req 3:
+
+A parità di altre condizioni,
+il collision rate della versione
+con collision avoidance è minore di quella della versione random.
+
+Quindi:
+Ex2.Test2.C <= Ex1.Test2.C
+Ex2.Test3.C <= Ex1.Test3.C
+Ex2.Test4.C <= Ex1.Test4.C
+Ex2.Test5.C <= Ex1.Test5.C
+
+---------------------------
+Req 4:
+
+A parità di altre condizioni,
+al diminuire della velocità diminuisce il collision rate.
+
+Quindi:
+Ex2.Test5.C <= Ex2.Test4.C
+

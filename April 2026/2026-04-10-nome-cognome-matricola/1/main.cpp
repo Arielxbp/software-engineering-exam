@@ -24,6 +24,9 @@ double run_one_simulation(double T, double H, double L, double V, double D, int 
     }
 
     long long totalCollisions = 0;
+    long long uniquePairs = 0;
+    std::vector<bool> wasColliding(N * N, false);
+    std::vector<bool> everCollided(N * N, false);
 
 
     // Number of steps
@@ -51,15 +54,28 @@ double run_one_simulation(double T, double H, double L, double V, double D, int 
 
         }
 
-        // Check collisions with every other UAV j > i and update totalCollisions
+        // Check collisions: count only new entries (transition into collision)
         for (int i = 0; i < N; ++i) {
             for (int j = i + 1; j < N; ++j) {
+                int idx = i * N + j;
                 if (uavs[i].pos.distanceTo(uavs[j].pos) < D) {
-                    totalCollisions++;
+                    if (!everCollided[idx]) {
+                        everCollided[idx] = true;
+                        uniquePairs++;
+                    }
+                    if (!wasColliding[idx]) {
+                        wasColliding[idx] = true;
+                        totalCollisions++;
+                    }
+                } else {
+                    wasColliding[idx] = false;
                 }
             }
         }
     }
+    printf("Collision entries: %lld | Distinct pairs: %lld | Re-entries: %lld\n",
+           totalCollisions, uniquePairs,
+           totalCollisions - uniquePairs);
     return (double)totalCollisions / H;
 }
 
