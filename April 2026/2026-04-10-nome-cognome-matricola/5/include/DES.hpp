@@ -186,32 +186,43 @@ public:
     for (auto &p : processes_) {
       p->initialize(startTime);
     }
+    heap_.clear();
+    heap_.reserve(processes_.size());
+    for (std::size_t i = 0; i < processes_.size(); ++i) {
+      heap_.push_back({processes_[i]->nextEventTime(), i});
+    }
+    std::make_heap(heap_.begin(), heap_.end(), Cmp{});
   }
 
   double nextEventTime() const {
-    if (processes_.empty()) {
-      return std::numeric_limits<double>::infinity();
-    }
-
-    double tMin = std::numeric_limits<double>::infinity();
-    for (const auto &p : processes_) {
-      double t = p->nextEventTime();
-      if (t < tMin)
-        tMin = t;
-    }
-    return tMin;
+    if (heap_.empty()) return std::numeric_limits<double>::infinity();
+    return heap_.front().time;
   }
 
   void handleEvent(double currentTime) {
-    for (auto &p : processes_) {
-      if (p->nextEventTime() <= currentTime) {
-        p->handleEvent(currentTime);
-      }
+    std::vector<std::size_t> due;
+    while (!heap_.empty() && heap_.front().time <= currentTime) {
+      std::pop_heap(heap_.begin(), heap_.end(), Cmp{});
+      due.push_back(heap_.back().index);
+      heap_.pop_back();
+    }
+    for (std::size_t idx : due) {
+      processes_[idx]->handleEvent(currentTime);
+      heap_.push_back({processes_[idx]->nextEventTime(), idx});
+      std::push_heap(heap_.begin(), heap_.end(), Cmp{});
     }
   }
 
 private:
+  struct Entry { double time; std::size_t index; };
+  struct Cmp {
+    bool operator()(const Entry &a, const Entry &b) const {
+      if (a.time != b.time) return a.time > b.time;
+      return a.index > b.index; // tie-break by registration order, same as original linear scan
+    }
+  };
   std::vector<std::unique_ptr<DiscreteEventProcess>> processes_;
+  std::vector<Entry> heap_;
 };
 
 // ---------------------------------------------------------------------------
